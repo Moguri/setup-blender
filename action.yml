@@ -1,0 +1,15 @@
+name: Setup Blender
+description: Set up a specific version of Blender and add it to the PATH
+author: Mitchell Stokes
+inputs:
+  blender-version:
+    description: Version of Blender to use, using SemVer's version syntax
+    required: true
+outputs:
+  blender-version:
+    description: The installed Blender version
+  blender-path:
+    description: The absolute path to the Blender executable
+runs:
+  using: node20
+  main: dist/index.js
