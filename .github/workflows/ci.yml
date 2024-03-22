@@ -55,8 +55,8 @@ jobs:
         id: test-action
         uses: ./
         with:
-          who-to-greet: GitHub
+          blender-version: latest
 
-      - name: Print Output
+      - name: Print Version
         id: output
-        run: echo "${{ steps.test-action.outputs.time }}"
+        run: echo "${{ steps.test-action.outputs.blender-version }}"
