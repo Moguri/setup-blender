@@ -1,7 +1,11 @@
+const fs = require('fs/promises')
 const os = require('os')
+const path = require('path')
 
 const core = require('@actions/core')
 const tc = require('@actions/tool-cache')
+const exec = require('@actions/exec')
+const crypto = require('crypto')
 
 const MANIFEST_URL = 'https://mirror.clarkson.edu/blender/release/'
 const DOWNLOAD_URL_BASE = 'https://mirror.clarkson.edu/blender/release/'
@@ -97,6 +101,46 @@ async function findRelease(version, osName, arch) {
 }
 
 /**
+ * Extract a dmg archive
+ *
+ * @param file     path to the dmg
+ * @returns        path to the destination directory
+ */
+async function extractDmg(file) {
+  const tempDirectory = process.env['RUNNER_TEMP'] || ''
+  if (!tempDirectory) {
+    throw new Error('Expected RUNNER_TEMP to be defined')
+  }
+
+  const dest = path.join(tempDirectory, crypto.randomUUID())
+  await fs.mkdir(dest, { recursive: true })
+
+  const mountPoint = path.join(tempDirectory, crypto.randomUUID())
+  await fs.mkdir(mountPoint, { recursive: true })
+
+  try {
+    // Mount the DMG
+    await exec.exec('hdiutil', [
+      'attach',
+      file,
+      '-mountpoint',
+      mountPoint,
+      '-nobrowse',
+      '-readonly'
+    ])
+
+    // Copy contents to destination without copying over the directory name of `mountPoint`
+    await exec.exec('bash', ['-c', `cp -R "${mountPoint}"/* "${dest}/"`])
+
+    return dest
+  } finally {
+    // Unmount the DMG
+    await exec.exec('hdiutil', ['detach', mountPoint])
+    await fs.rmdir(mountPoint)
+  }
+}
+
+/**
  * The main function for the action.
  * @returns {Promise<void>} Resolves when the action is complete.
  */
@@ -138,19 +182,21 @@ async function run() {
       core.info(`Download saved to ${blenderDownload}`)
 
       let blenderExtracted = null
+      let blenderSubdir = `blender-${resolvedVersion}-${osName}-${arch}`
       if (resolvedRelease.endsWith('.zip')) {
         blenderExtracted = await tc.extractZip(blenderDownload)
       } else if (resolvedRelease.endsWith('.tar.xz')) {
         blenderExtracted = await tc.extractTar(blenderDownload, undefined, 'xJ')
       } else if (resolvedRelease.endsWith('.dmg')) {
-        blenderExtracted = await tc.extract7z(blenderDownload)
+        blenderExtracted = await extractDmg(blenderDownload)
+        blenderSubdir = 'Blender.app/Contents/MacOS'
       } else {
         throw Error(`Unknown extension on download: ${blenderDownload}`)
       }
       core.info(`Extracted Blender release to ${blenderExtracted}`)
 
       const cachedPath = await tc.cacheDir(
-        `${blenderExtracted}/blender-${resolvedVersion}-${osName}-${arch}`,
+        `${blenderExtracted}/${blenderSubdir}`,
         'blender',
         resolvedVersion
       )
